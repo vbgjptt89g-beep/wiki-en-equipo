@@ -2,7 +2,7 @@
 
 Wiki en equipo es un proyecto para crear un espacio interno de documentación para Grupo Comidas. La idea es reunir páginas, procesos y recursos, organizados por departamentos y protegidos según el usuario y sus permisos.
 
-> **Estado actual:** el repositorio contiene la estructura inicial de carpetas. La aplicación todavía no tiene funcionalidades implementadas ni tecnologías de desarrollo definidas.
+> **Estado actual:** se está preparando la API del proyecto en `backend/` con Node.js, TypeScript, Express, Prisma y SQLite para desarrollo. La interfaz de `frontend/` sigue pendiente.
 
 ## Objetivo
 
@@ -20,7 +20,7 @@ Construir una plataforma de documentación colaborativa inspirada en herramienta
 - Subpáginas, historial de ediciones, visitas a páginas públicas y papelera restaurable.
 - Límites para archivos subidos y visualización optimizada de imágenes.
 
-Estas funciones describen el alcance deseado; aún deben diseñarse e implementarse.
+Estas funciones describen el alcance del proyecto. Consulta [backend/README.md](backend/README.md) para ver las rutas y capacidades que ya se están implementando en el servidor. La interfaz y la integración con el editor siguen pendientes.
 
 ## Roles previstos
 
@@ -83,7 +83,7 @@ Los archivos `.gitkeep` conservan las carpetas mientras estén vacías; pueden q
 
 ## Desarrollo
 
-Todavía no hay instrucciones de instalación o ejecución porque el proyecto no tiene una aplicación ni dependencias configuradas. Cuando se elijan las tecnologías, esta sección debe incluir los requisitos, los pasos para instalar dependencias, configurar variables de entorno y ejecutar la aplicación.
+Para preparar el servidor, consulta [backend/README.md](backend/README.md). La interfaz todavía no tiene tecnologías ni instrucciones de ejecución definidas.
 
 ## Seguridad
 

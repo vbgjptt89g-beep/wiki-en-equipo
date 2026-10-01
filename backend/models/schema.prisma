@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  createdAt   DateTime @default(now())
+  users       User[]
+  pages       Page[]  @relation("DepartmentPages")
+  templates   Template[]
+  wallPageId  String?  @unique
+  wallPage    Page?    @relation("DepartmentWall", fields: [wallPageId], references: [id], onDelete: SetNull)
+  featured    DepartmentFeaturedPage[]
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          String   @default("USER")
+  departmentId  String
+  department    Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  active        Boolean  @default(true)
+  sessionVersion Int     @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  pages          Page[] @relation("PageOwner")
+  shares         PageShare[]
+  histories      PageHistory[]
+  visits         PageVisit[]
+  templates      Template[]
+  uploads        FileAsset[]
+  syncOperations SyncOperation[]
+}
+
+model Page {
+  id             String   @id @default(cuid())
+  title          String
+  contentJson    String   @default("[]")
+  backgroundJson String?
+  visibility     String   @default("PRIVATE")
+  version        Int      @default(1)
+  isWall         Boolean  @default(false)
+  isCompanyWall  Boolean  @default(false)
+  ownerId        String
+  owner          User     @relation("PageOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  departmentId   String
+  department     Department @relation("DepartmentPages", fields: [departmentId], references: [id], onDelete: Restrict)
+  parentId        String?
+  parent          Page?    @relation("SubPages", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Page[]   @relation("SubPages")
+  departmentWall Department? @relation("DepartmentWall")
+  companyWall    CompanySettings? @relation("CompanyWall")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+  shares          PageShare[]
+  shareLinks      PageShareLink[]
+  history         PageHistory[]
+  visits          PageVisit[]
+  files           FileAsset[]
+  tags            Tag[]
+  featuredIn      DepartmentFeaturedPage[]
+
+  @@index([departmentId, visibility, deletedAt])
+  @@index([ownerId, deletedAt])
+  @@index([parentId])
+}
+
+model PageShare {
+  id          String   @id @default(cuid())
+  pageId      String
+  page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission  String
+  createdAt   DateTime @default(now())
+  @@unique([pageId, userId])
+}
+
+model PageShareLink {
+  id          String   @id @default(cuid())
+  pageId      String
+  page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  tokenHash   String   @unique
+  permission  String
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model PageHistory {
+  id           String   @id @default(cuid())
+  pageId       String
+  page         Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  changedById  String
+  changedBy    User     @relation(fields: [changedById], references: [id], onDelete: Restrict)
+  version      Int
+  snapshotJson String
+  createdAt    DateTime @default(now())
+  @@unique([pageId, version])
+}
+
+model Tag {
+  id    String @id @default(cuid())
+  name  String @unique
+  pages Page[]
+}
+
+model PageVisit {
+  id        String   @id @default(cuid())
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  visitedAt DateTime @default(now())
+  @@index([pageId, visitedAt])
+}
+
+model Template {
+  id            String   @id @default(cuid())
+  title         String
+  description   String   @default("")
+  contentJson   String   @default("[]")
+  backgroundJson String?
+  scope         String   @default("PRIVATE")
+  isDefault     Boolean  @default(false)
+  ownerId       String?
+  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  departmentId  String?
+  department    Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([scope, departmentId, isDefault])
+}
+
+model FileAsset {
+  id          String   @id @default(cuid())
+  storageName String   @unique
+  originalName String
+  mimeType    String
+  sizeBytes   Int
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  pageId      String?
+  page        Page?    @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  @@index([ownerId, createdAt])
+}
+
+model SyncOperation {
+  id           String   @id @default(cuid())
+  operationId  String
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageId       String
+  resultJson   String
+  createdAt    DateTime @default(now())
+  @@unique([userId, operationId])
+}
+
+model CompanySettings {
+  id             String @id @default("main")
+  wallPageId     String? @unique
+  wallPage       Page? @relation("CompanyWall", fields: [wallPageId], references: [id], onDelete: SetNull)
+}
+
+model DepartmentFeaturedPage {
+  id           String @id @default(cuid())
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  pageId       String
+  page         Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  sortOrder    Int @default(0)
+  @@unique([departmentId, pageId])
+  @@index([departmentId, sortOrder])
+}
