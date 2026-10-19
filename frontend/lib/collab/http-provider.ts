@@ -7,19 +7,20 @@ import * as awarenessProtocol from "y-protocols/awareness";
  * `connection-error` y `closed`; `awareness`; `connect`, `disconnect` y `destroy`), consultando
  * `POST <url>/<pageId>` del backend: envía los cambios y la presencia propios y recibe los de los demás.
  *
- * Ritmo de las consultas (cada una cuenta como invocación en Vercel):
- * - 2 s mientras hay actividad (cambios propios o ajenos, teclado o ratón en los últimos 30 s);
- * - 5 s hasta los 5 minutos sin actividad, 15 s hasta los 30 minutos y después en pausa;
+ * Ritmo de las consultas (cada una cuenta como invocación y, sobre todo, CPU activa en Vercel; el plan Hobby
+ * solo incluye 4 horas de CPU al mes, ver `docs/limites-vercel-hobby.md`):
+ * - 5 s mientras hay actividad (cambios propios o ajenos, teclado o ratón en los últimos 30 s);
+ * - 20 s hasta los 5 minutos sin actividad, 60 s hasta los 30 minutos y después en pausa;
  * - en pausa con la pestaña oculta. Cualquier actividad la reanuda al instante.
- * Los cambios propios salen enseguida (con al menos 1,5 s entre consultas).
+ * Los cambios propios salen enseguida (con al menos 1,5 s entre consultas), así que al escribir no se nota.
  *
  * Sin conexión los cambios quedan en el documento (y en IndexedDB): al volver se envía la diferencia contra
  * lo que tiene el servidor, y Yjs combina las dos versiones.
  */
 export const HTTP_POLLING = {
-  activeMs: 2_000,
-  idleMs: 5_000,
-  slowMs: 15_000,
+  activeMs: 5_000,
+  idleMs: 20_000,
+  slowMs: 60_000,
   minGapMs: 1_500,
   /** Sin actividad durante estos tiempos se pasa al siguiente ritmo. */
   activeForMs: 30_000,
