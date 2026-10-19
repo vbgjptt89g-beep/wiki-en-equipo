@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { collabServer } from "../../backend/api/app.js";
+import { collabServer } from "../../backend/src/app.js";
 import { awarenessProtocol, connectCollab, connectionStatus, sleep, waitFor, Y } from "./collab-client";
 import { createDepartment, createPage, createUser, prisma, resetDatabase, startApi, type TestApi, type TestUser } from "./helpers";
 

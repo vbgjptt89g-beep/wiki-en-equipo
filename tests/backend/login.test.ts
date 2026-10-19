@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { trustProxySetting } from "../../backend/api/app.js";
+import { trustProxySetting } from "../../backend/src/app.js";
 import { hashPassword } from "../../backend/auth/password.js";
 import { createDepartment, createUser, resetDatabase, startApi, type TestApi, type TestUser } from "./helpers";
 

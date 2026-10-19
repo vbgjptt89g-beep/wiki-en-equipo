@@ -9,8 +9,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch api/server.ts",
-    "start": "node dist/api/server.js",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/src/server.js",
     "build": "tsc -p tsconfig.json",
     "db:generate": "prisma generate --schema models/schema.prisma",
     "db:migrate": "prisma migrate dev --schema models/schema.prisma",
