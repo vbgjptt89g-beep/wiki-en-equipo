@@ -24,9 +24,12 @@ export async function login(_prev: LoginState, form: FormData): Promise<LoginSta
   // Se usa la última IP de la lista: la agrega el proxy más cercano; las primeras las puede inventar el navegador.
   const h = await headers();
   const clientIp = h.get("x-forwarded-for")?.split(",").map((ip) => ip.trim()).filter(Boolean).at(-1) || h.get("x-real-ip") || undefined;
+  // En Vercel, el X-Forwarded-For de una función a otra se reescribe: la IP va en X-Wiki-Client-Ip, firmada
+  // con PROXY_SECRET (solo en el servidor; el backend la ignora si el secreto no coincide).
+  const proxySecret = process.env.PROXY_SECRET;
   const res = await backend<{ token: string }>("/auth/login", {
     method: "POST", body: { email, password }, token: null,
-    ...(clientIp && { headers: { "X-Forwarded-For": clientIp } }),
+    ...(clientIp && { headers: { "X-Forwarded-For": clientIp, ...(proxySecret && { "X-Wiki-Client-Ip": clientIp, "X-Wiki-Proxy-Secret": proxySecret }) } }),
   });
   if (!res.ok) {
     const message =

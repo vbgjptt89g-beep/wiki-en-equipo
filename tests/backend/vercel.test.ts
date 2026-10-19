@@ -59,6 +59,21 @@ describe("Vercel Cron: limpieza de la papelera", () => {
   });
 });
 
+describe("CORS de la edición en vivo por HTTP (el navegador llama directo al backend)", () => {
+  const preflight = (origin: string) => fetch(`${api.base}/api/collab/una-pagina`, { method: "OPTIONS", headers: { Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "authorization,content-type" } });
+
+  it("autoriza al frontend y guarda la respuesta 2 h (menos invocaciones)", async () => {
+    const res = await preflight("http://localhost:3000");
+    expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
+    expect(res.headers.get("access-control-max-age")).toBe("7200");
+  });
+
+  it("no autoriza a otros sitios", async () => {
+    const res = await preflight("https://sitio-malo.example");
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+});
+
 describe("cuerpos grandes", () => {
   it("más de 4 MB responde 413 y no 500", async () => {
     const res = await api.as(luis).post("/collab/una-pagina-cualquiera", { update: "A".repeat(4.2 * 1024 * 1024) });

@@ -32,8 +32,9 @@ app.disable("x-powered-by");
 app.set("trust proxy", trustProxySetting(process.env.TRUST_PROXY));
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 // maxAge: el navegador guarda 2 h la respuesta a la comprobación previa (OPTIONS) de la edición en vivo por HTTP,
-// en lugar de repetirla en cada consulta (en Vercel cada petición cuenta como invocación).
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN ?? "http://localhost:3000", methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowedHeaders: ["Authorization", "Content-Type"], maxAge: 7200 }));
+// en lugar de repetirla en cada consulta (en Vercel cada petición cuenta como invocación). Los orígenes son los
+// mismos que acepta la edición en vivo: FRONTEND_ORIGIN y COLLAB_ALLOWED_ORIGINS.
+app.use(cors({ origin: collabOptionsFromEnv().allowedOrigins, methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allowedHeaders: ["Authorization", "Content-Type"], maxAge: 7200 }));
 // IP real del inicio de sesión. En Vercel el servidor de Next no puede reenviarla en X-Forwarded-For (Vercel lo
 // reescribe con la IP de la función): la manda en X-Wiki-Client-Ip junto con PROXY_SECRET, que comparten los dos.
 app.use((req, _res, next) => {
