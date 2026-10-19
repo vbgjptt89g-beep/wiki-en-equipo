@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate dev --schema models/schema.prisma",
     "db:deploy": "prisma migrate deploy --schema models/schema.prisma",
     "db:deploy:turso": "tsx models/deploy-turso.ts",
+    "vercel-build": "prisma generate --schema models/schema.prisma && tsx models/deploy-turso.ts --opcional --mantenimiento",
     "test": "vitest run",
     "test:turso": "vitest run --mode turso"
   },

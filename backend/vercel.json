@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "express",
+  "buildCommand": "pnpm run vercel-build",
+  "regions": ["iad1"],
+  "crons": [{ "path": "/api/cron/papelera", "schedule": "0 9 * * *" }]
+}
