@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native: desarrollo; rhel-openssl-3.0.x: las funciones de Vercel (Amazon Linux 2023).
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -81,6 +83,9 @@ model Page {
   featuredIn      DepartmentFeaturedPage[]
   companyFeatured CompanyFeaturedPage?
   collabState     PageCollabState?
+  collabDoc       CollabDoc?
+  collabUpdates   CollabUpdate[]
+  collabPresence  CollabPresence[]
 
   @@index([departmentId, visibility, deletedAt])
   @@index([ownerId, deletedAt])
@@ -259,4 +264,44 @@ model PageCollabState {
   state       Bytes
   pageVersion Int
   updatedAt   DateTime @updatedAt
+}
+
+/// Edición en vivo por HTTP (producción en Vercel, sin WebSockets). Documento Yjs compactado de una página.
+/// `epoch` cambia cuando el contenido se reemplaza por otra vía (restaurar una versión): los editores abiertos
+/// con otro epoch reciben 409 y vuelven a cargar la página.
+model CollabDoc {
+  pageId       String   @id
+  page         Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  epoch        String
+  snapshot     Bytes
+  /// Las actualizaciones con id <= lastUpdateId ya están dentro de snapshot.
+  lastUpdateId Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
+/// Cambios de Yjs que llegan de los editores (solo se agregan; se compactan en CollabDoc.snapshot).
+model CollabUpdate {
+  id        Int      @id @default(autoincrement())
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  data      Bytes
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@index([pageId, id])
+}
+
+/// Presencia ("también editando") por cliente de Yjs. `state` en JSON; null = salió de la página.
+model CollabPresence {
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  /// clientID de Yjs (entero sin signo de 32 bits; se guarda como texto).
+  clientId  String
+  userId    String
+  clock     Int
+  state     String?
+  updatedAt DateTime @updatedAt
+
+  @@id([pageId, clientId])
+  @@index([pageId, updatedAt])
 }

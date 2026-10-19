@@ -14,6 +14,7 @@ import { syncPage } from "../sync/service.js";
 import { uploadSingleFile, isInlineSafeImage } from "../storage/files.js";
 import type { CollabServer } from "../realtime/collab.js";
 import type { RealtimeHub } from "../realtime/hub.js";
+import { syncCollab } from "../realtime/http-collab.js";
 
 const router = Router();
 const limiterDefaults = { standardHeaders: true, legacyHeaders: false, message: { error: { code: "TOO_MANY_REQUESTS", message: "Hiciste demasiados intentos. Espera unos minutos e inténtalo de nuevo." } } } as const;
@@ -173,6 +174,11 @@ router.post("/pages/from-template/:templateId", async (req, res) => {
   res.status(201).json({ page: await templates.createPageFromTemplate(actor(req), param(req, "templateId"), body) });
 });
 router.get("/pages/:pageId", async (req, res) => res.json({ page: await pages.findAccessiblePage(param(req, "pageId"), actor(req)) }));
+// Edición en vivo por HTTP (producción en Vercel): envía lo propio y recibe lo de los demás. Ver realtime/http-collab.ts.
+router.post("/collab/:pageId", async (req, res) => {
+  const body = objectBody(z.object({ epoch: z.string().min(1).max(100).nullable().optional(), after: z.number().int().min(0).optional(), update: z.string().max(3_000_000).optional(), awareness: z.string().max(100_000).optional(), clientId: z.number().int().min(0).max(4_294_967_295).optional() }), req);
+  res.json(await syncCollab(actor(req), param(req, "pageId"), body));
+});
 router.post("/pages/:pageId/visit", async (req, res) => res.json(await pages.recordVisit(actor(req), param(req, "pageId"))));
 router.patch("/pages/:pageId", async (req, res) => {
   const body = objectBody(z.object({ title: title.optional(), icon, content: z.unknown().optional(), background: z.unknown().optional(), visibility: visibility.optional(), parentId: id.nullable().optional(), tags, expectedVersion: z.number().int().positive(), autosave: z.boolean().optional() }).refine((data) => Object.keys(data).some((key) => key !== "expectedVersion" && key !== "autosave")), req);

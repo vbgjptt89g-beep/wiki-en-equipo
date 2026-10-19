@@ -32,6 +32,7 @@ import * as Y from "yjs";
 import { verifyAccessToken } from "../auth/token.js";
 import { prisma } from "../models/client.js";
 import { canEditPage, canReadPage, type Actor, type PageAccessRecord } from "../permissions/access.js";
+import { resetHttpCollab } from "./http-collab.js";
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -306,6 +307,8 @@ export class CollabServer {
       room.doc.destroy();
     }
     await prisma.pageCollabState.deleteMany({ where: { pageId } });
+    // También la edición en vivo por HTTP (Vercel): los editores abiertos reciben 409 y vuelven a cargar.
+    await resetHttpCollab(pageId);
   }
 
   /** Cambios que afectan a varias páginas a la vez (muros). */
