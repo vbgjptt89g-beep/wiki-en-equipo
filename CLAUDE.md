@@ -40,42 +40,27 @@ Desde el 16/10/2026, A termina todo lo que falta, también el backend (con permi
 
 ## Estado actual (19/10/2026)
 
-En `main`: los PR #1, #2, #15, #16, #17 (usuarios de prueba y colores del logo), #18 (latido en `/realtime`) y #19 (Turso y archivos en la base). Los issues #3 a #13 están cerrados.
+En `main`: los PR #1, #2, #15, #16, #17 (usuarios de prueba y colores del logo), #18 (latido en `/realtime`), #19 (Turso y archivos en la base) y #20 (Back4App, ya retirado). Los issues #3 a #13 están cerrados.
 
-**Despliegue: todo gratis y sin tarjeta (decisión del equipo; nunca planes de pago ni tarjeta).**
+**Despliegue: todo gratis y sin tarjeta (decisión del equipo; nunca planes de pago ni tarjeta).** Frontend y backend viven en Vercel; la base, en Turso.
 
-- **Frontend:** Vercel, https://wiki-en-equipo.vercel.app.
-- **Backend:** Back4App Containers, plan Free, con `backend/Dockerfile` (Root `./backend`).
-  - La imagen trae `PORT=8080`, `FILE_STORAGE=database`, `FRONTEND_ORIGIN=https://wiki-en-equipo.vercel.app`, `TRUST_PROXY=2`, `MAX_UPLOAD_BYTES=4194304` y `NODE_ENV=production` solo en la imagen final. Corre con el usuario `node`.
-  - En el panel se pegan `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `JWT_SECRET` y `BOOTSTRAP_SECRET`. Las claves nunca se piden por chat.
-  - Se eligió en octubre de 2026 frente a Koyeb (pide tarjeta), Hugging Face (Docker de pago desde julio de 2026), SnapDeploy (WebSockets de pago) y Railway (crédito único).
-  - Por vigilar: si el contenedor gratis se detiene por inactividad o tiempo. No se pierde nada, todo vive en Turso.
-- **Base:** Turso. Prisma usa `@prisma/adapter-libsql` si hay `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`; si no, el archivo de `DATABASE_URL` (local y pruebas, sin internet).
-  - `backend/models/migrate-turso.ts` aplica al arrancar las migraciones que falten, cada una en una transacción con su registro en `_prisma_migrations`, y nunca borra. A mano: `pnpm run db:deploy:turso`.
-- **Archivos:** `FILE_STORAGE` = `disk` | `database` (tabla `FileBlob`; por defecto `database` con Turso). Se leen y borran de los dos sitios. Se guardan solo después de revisar permisos.
+- **Frontend:** Vercel, proyecto `wiki-en-equipo`, https://wiki-en-equipo.vercel.app.
+- **Backend:** Vercel, proyecto `wiki-en-equipo-backend`, raíz `backend`, `backend/vercel.json` (`framework: express`, `buildCommand: pnpm run vercel-build`, región `iad1`, Cron diario). Express usa `src/app.ts` como exportación por defecto.
+  - Variables en Production: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `FRONTEND_ORIGIN`, `JWT_SECRET`, `BOOTSTRAP_SECRET`, `PROXY_SECRET`, `CRON_SECRET`, `FILE_STORAGE=database`, `TRUST_PROXY=false`, `MAX_UPLOAD_BYTES=4194304`.
+  - Las migraciones se aplican **al compilar** (`vercel-build` → `models/deploy-turso.ts --opcional --mantenimiento`), no en cada petición. Sin `TURSO_DATABASE_URL` (vistas previas) no hace nada.
+  - Retirado Back4App Containers (y antes Render): único servicio gratis que publicaba un contenedor; se abandonó para tener las dos partes en Vercel, con una sola CLI y sin Docker. **El `backend/Dockerfile` ya no existe.**
+- **Base:** Turso. Prisma usa `@prisma/adapter-libsql` si hay `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`; si no, el archivo de `DATABASE_URL` (local y pruebas, sin internet). `binaryTargets` incluye `rhel-openssl-3.0.x` para las funciones de Vercel.
+  - `backend/models/migrate-turso.ts` aplica las migraciones que falten, cada una en una transacción con su registro en `_prisma_migrations`, y nunca borra. A mano: `pnpm run db:deploy:turso`.
+- **Archivos:** `FILE_STORAGE` = `disk` | `database` (tabla `FileBlob`; por defecto `database` con Turso). Las funciones de Vercel no conservan disco. Límite de 4 MB.
+- **Edición en vivo:** en local, WebSockets (`/collab`, `/realtime`). En producción, **consultas periódicas por HTTP** (`POST /api/collab/:pageId`, `frontend/lib/collab/http-provider.ts`), porque las funciones de Vercel no comparten memoria entre instancias. El ritmo se eligió según el plan Hobby: 5 s con actividad, 20 s / 60 s en reposo y en pausa tras 30 min o con la pestaña oculta (ver `docs/limites-vercel-hobby.md`).
+- **IP real del login:** Vercel reescribe `X-Forwarded-For`, así que el servidor de Next manda la IP en `X-Wiki-Client-Ip` firmada con `PROXY_SECRET` (`TRUST_PROXY=false`).
+- **Retención de la papelera:** Vercel Cron llama una vez al día a `/api/cron/papelera` con `CRON_SECRET`.
 - El frontend tiene `maxDuration = 60` (layout raíz y `/archivos`) para esperar al backend mientras arranca.
 - Inicio de sesión: fondo blanco cálido (`paper`) y tarjeta blanca pura con borde y sombra, sin rojo ni la curva amarilla (decisión del equipo).
 
-Pruebas: backend 155 (`cd backend && corepack pnpm test`), las mismas con el adaptador de Turso (`corepack pnpm run test:turso`), y frontend 75, de ellas 16 de integración contra el backend con el seed (`cd frontend && npm test`). `tests/backend/despliegue.test.ts` vigila el Dockerfile. Los dos builds compilan. `npm audit` y `pnpm audit`: 0 vulnerabilidades.
+Pruebas: backend 171 (`cd backend && corepack pnpm test`), las mismas con el adaptador de Turso (`corepack pnpm run test:turso`), y frontend 75+, de ellas las de integración contra el backend con el seed (`cd frontend && npm test`). `tests/backend/despliegue.test.ts` vigila `backend/vercel.json`. Los dos builds compilan. `npm audit` y `pnpm audit`: 0 vulnerabilidades.
 
-La imagen se construyó y probó con Docker en local (`docker build -t wiki-backend .` en `backend/`, contenedor con una base libSQL en `/tmp`):
-- aplica las 11 migraciones;
-- `/health` responde;
-- usa unos 62 MB de memoria;
-- `npm run seed` y las 75 pruebas del frontend pasan contra el contenedor;
-- los WebSockets se aceptan desde el origen de Vercel y se rechazan (403) desde otro;
-- las subidas quedan en `FileBlob`, con el disco vacío.
-
-Antes, con el backend compilado en modo Turso, se verificó en el navegador:
-- inicio de sesión;
-- crear y editar una página;
-- subir una imagen;
-- compartir;
-- edición en vivo con dos usuarios;
-- dormir y despertar el backend (se reconecta solo);
-- los dos casos de permisos.
-
-**Producción, pendiente:** crear la base en Turso y la app en Back4App (pasos en el README, "Despliegue"), configurar Vercel (`BACKEND_URL`, `NEXT_PUBLIC_REALTIME_URL`, `NEXT_PUBLIC_COLLAB_URL`, `NEXT_PUBLIC_MAX_UPLOAD_MB=4`) y crear los usuarios con el script de PowerShell. **Nunca reiniciar la base de producción ni correr `npm run seed` contra ella.**
+**Producción, pendiente:** crear la base en Turso y el proyecto del backend en Vercel (pasos en el README, "Despliegue"), configurar el frontend (`BACKEND_URL`, `NEXT_PUBLIC_COLLAB_URL`, `NEXT_PUBLIC_MAX_UPLOAD_MB=4`, `PROXY_SECRET`) y crear los usuarios con el script de PowerShell (`scripts/crear-usuarios.ps1`). **Nunca reiniciar la base de producción ni correr `npm run seed` contra ella.**
 
 Correo de los commits: la cuenta de GitHub bloquea los push que muestran el Gmail; en este repo `user.email` es el `noreply` de GitHub (`206388899+carlos388mendoza@users.noreply.github.com`).
 
@@ -86,14 +71,14 @@ Correo de los commits: la cuenta de GitHub bloquea los push que muestran el Gmai
 - **Logo:** original en `assets/brand/` (con `LEEME.md`), copia de 512 px en `frontend/public/brand/`, componente `components/ui/BrandLogo.tsx` (next/image). Favicon con la convención de Next: `app/icon.png` (32), `app/icon1.png` (192) con las esquinas transparentes y `app/apple-icon.png` (180) con fondo blanco porque iOS pinta de negro lo transparente. `app/manifest.ts` (192 y 512). El service worker los guarda.
 - **Editor:** BlockNote (construido sobre TipTap).
 - **Sesión:** cookie httpOnly `wiki_token`; el navegador solo recibe el token para los WebSockets.
-- **Edición en vivo:** servidor Yjs del backend (`/collab`). El frontend usa `ws://<host>:4000/collab` si no se define `NEXT_PUBLIC_COLLAB_URL` (`off` lo desactiva y se usan los avisos de `/realtime`). Se quitó el servidor de desarrollo `collab:dev`.
+- **Edición en vivo:** en local, servidor Yjs del backend (`/collab`). El frontend usa `ws://<host>:4000/collab` si no se define `NEXT_PUBLIC_COLLAB_URL` (`off` lo desactiva y se usan los avisos de `/realtime`). En **producción** (Vercel) `NEXT_PUBLIC_COLLAB_URL` apunta a `https://<backend>/api/collab` y se usan consultas periódicas por HTTP (`frontend/lib/collab/http-provider.ts`), sin WebSockets. Se quitó el servidor de desarrollo `collab:dev`.
 - **Visitas:** solo `POST /api/pages/:id/visit` desde la vista de lectura (`components/page/VisitCounter.tsx`), una vez cada 30 minutos por persona y solo en páginas públicas.
 - **Retención de la papelera:** 30 días (`TRASH_RETENTION_DAYS`; `0` la desactiva).
 - **Directorio:** solo id, nombre y departamento; mínimo 2 letras, máximo 20 resultados; busca por nombre sin tildes o por correo completo exacto.
 
 ## Backend (lo que hay que saber)
 
-Node 20+ (22 en la imagen Docker), Express 5, Prisma + SQLite (en producción Turso con `@prisma/adapter-libsql`), Zod, JWT, Yjs 13 (y-protocols). Gestor: **pnpm** (vía `corepack pnpm`, desde la carpeta `backend/`: desde la raíz corepack usa otra versión). Detalle de rutas y permisos en `backend/README.md`.
+Node 20+, Express 5, Prisma + SQLite (en producción Turso con `@prisma/adapter-libsql`), Zod, JWT, Yjs 13 (y-protocols). Gestor: **pnpm** (vía `corepack pnpm`, desde la carpeta `backend/`: desde la raíz corepack usa otra versión). Detalle de rutas y permisos en `backend/README.md`.
 
 ### Correrlo en local
 

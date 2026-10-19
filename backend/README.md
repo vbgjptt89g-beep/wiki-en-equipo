@@ -60,7 +60,8 @@ El inicio de sesión cuenta solo los intentos fallidos: 10 por cuenta desde la m
 | `POST /api/pages/from-template/:templateId` | Crear una página desde una plantilla (copia sus archivos) |
 | `POST /api/files` (`pageId` o `templateId`), `GET /api/files/:fileId/content`, `DELETE /api/files/:fileId` | Archivos con límite de tamaño y tipos permitidos |
 | `POST /api/sync/pages/:pageId` | Sincronización optimista por versión; devuelve `409` con la versión actual ante conflictos |
-| WebSocket `/collab/pagina-<pageId>?token=` | Edición en vivo (Yjs) con presencia |
+| WebSocket `/collab/pagina-<pageId>?token=` | Edición en vivo (Yjs) con presencia (local) |
+| `POST /api/collab/:pageId` | Edición en vivo por HTTP (producción en Vercel, sin WebSockets) |
 | WebSocket `/realtime` | Avisos de cambios a participantes autorizados |
 
 Todas las rutas salvo `/health`, inicio de sesión y configuración inicial requieren autenticación. Las páginas son privadas por defecto. Los cambios incrementan `version` y guardan la versión anterior; `PATCH /api/pages/:pageId` requiere `expectedVersion`. Con `autosave: true`, los autoguardados de la misma persona en menos de 10 minutos no crean otra versión del historial. Las sesiones se invalidan al cambiar la contraseña y las cuentas inactivas pierden acceso inmediatamente.
@@ -79,7 +80,7 @@ Están en `permissions/access.ts`:
 
 ## Edición en vivo (Yjs)
 
-`realtime/collab.ts` implementa el protocolo y-websocket con Yjs v13 (compatible con BlockNote y con `WebsocketProvider` de `y-websocket`). La sala de cada página es `pagina-<pageId>` y el token va en `?token=`.
+`realtime/collab.ts` implementa el protocolo y-websocket con Yjs v13 (compatible con BlockNote y con `WebsocketProvider` de `y-websocket`). La sala de cada página es `pagina-<pageId>` y el token va en `?token=`. Es lo que se usa en local.
 
 - Valida la sesión y el acceso antes de abrir el WebSocket (401 o 403) y revisa el encabezado `Origin`.
 - Quien solo puede leer recibe el documento y los cambios, pero sus cambios se ignoran.
@@ -87,6 +88,16 @@ Están en `permissions/access.ts`:
 - Presencia: cada conexión solo publica sus propios estados y el nombre es siempre el de su cuenta.
 - Guarda el documento en `PageCollabState` con la versión de la página; si la página cambió por otra vía, el estado viejo se descarta y el editor carga el contenido guardado.
 - Al restaurar una versión o sincronizar cambios sin conexión, la sala se reinicia: las conexiones se cierran con `4409` y el editor debe volver a cargar la página.
+
+### Por HTTP (producción en Vercel)
+
+`realtime/http-collab.ts` ofrece la misma edición en vivo con **consultas periódicas** (`POST /api/collab/:pageId`), porque las funciones de Vercel no comparten memoria entre instancias: cada petición lleva los cambios y la presencia propios y recibe los de los demás.
+
+- El cuerpo es `{ epoch, after, clientId, update?, awareness? }` (`update` y `awareness` en base64). La respuesta es `{ epoch, access, cursor, update, full, awareness }`.
+- `epoch` identifica la versión de la página: si cambió (restaurar versión, sincronizar cambios sin conexión), responde `409` y el editor vuelve a cargar.
+- Mismos permisos que el WebSocket: sin acceso, `403`; quien solo tiene lectura nunca recibe `access: "edit"`.
+- Guarda en las tablas `PageCollabHttp` / `PageCollabHttpUpdate` (documento compactado + cambios incrementales), compactando los cambios viejos.
+- El ritmo de las consultas lo decide el cliente (`frontend/lib/collab/http-provider.ts`), ajustado al plan gratis de Vercel (`docs/limites-vercel-hobby.md`).
 
 ## Realtime y modo sin conexión
 

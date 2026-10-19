@@ -9,7 +9,7 @@ mkdirSync(uploadDirectory, { recursive: true });
 
 /**
  * Dónde se guardan los archivos subidos (FILE_STORAGE): `disk` (UPLOAD_DIR, desarrollo) o `database`
- * (tabla FileBlob; producción en un contenedor gratis, que no conserva el disco). Sin definir: `database` con Turso
+ * (tabla FileBlob; producción en Vercel, cuyas funciones no conservan el disco). Sin definir: `database` con Turso
  * y `disk` sin él. Al leer o borrar se busca en los dos sitios, así que cambiar de modo no rompe los viejos.
  */
 export function fileStorage(): "disk" | "database" {

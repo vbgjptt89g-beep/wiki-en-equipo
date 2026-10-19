@@ -25,6 +25,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Ayudantes locales del asistente (lanzadores, sin secretos)
+.claude/
+
 # Usuarios de prueba generados por `npm run seed`
 *.local.json
 

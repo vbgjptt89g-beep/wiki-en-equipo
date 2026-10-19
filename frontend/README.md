@@ -42,7 +42,7 @@ No corras `npm run build` con `npm run dev` abierto: ambos usan `.next`.
 
 ## Variables (`.env.local`)
 
-`BACKEND_URL`, `NEXT_PUBLIC_REALTIME_URL`, `NEXT_PUBLIC_COLLAB_URL`, `NEXT_PUBLIC_MAX_UPLOAD_MB`, `NEXT_PUBLIC_TRASH_RETENTION_DAYS`, `UNSPLASH_ACCESS_KEY`, `NEXT_PUBLIC_ENABLE_SW`. Detalle en [.env.example](.env.example).
+`BACKEND_URL`, `NEXT_PUBLIC_COLLAB_URL`, `NEXT_PUBLIC_MAX_UPLOAD_MB`, `NEXT_PUBLIC_TRASH_RETENTION_DAYS`, `UNSPLASH_ACCESS_KEY`, `NEXT_PUBLIC_ENABLE_SW`, `PROXY_SECRET` (producción). Detalle en [.env.example](.env.example).
 
 ## Estructura
 
@@ -74,8 +74,9 @@ No corras `npm run build` con `npm run dev` abierto: ambos usan `.next`.
 
 ## Edición simultánea y sin conexión
 
-- **En vivo con presencia:** el editor se conecta al servidor Yjs del backend (`/collab`, protocolo y-websocket). Lo que escribe una persona aparece al instante en las demás, con su cursor, y arriba a la derecha se ve **En vivo** y quién más está editando ("También editando"). Quien solo puede leer no puede abrir el editor y, aunque lo intentara, el servidor ignora sus cambios.
-- Por defecto usa `ws://<host actual>:4000/collab`. En producción, `NEXT_PUBLIC_COLLAB_URL` con la dirección pública (WSS). Con `NEXT_PUBLIC_COLLAB_URL=off` se usa solo el canal de avisos `/realtime` (los cambios de otra persona llegan cuando guarda, sin presencia).
+- **En vivo con presencia:** el editor se conecta a la edición en vivo del backend. Lo que escribe una persona aparece al instante en las demás, con su cursor, y arriba a la derecha se ve **En vivo** y quién más está editando ("También editando"). Quien solo puede leer no puede abrir el editor y, aunque lo intentara, el servidor ignora sus cambios.
+- **Local:** WebSocket al servidor Yjs del backend (`ws://<host actual>:4000/collab`, protocolo y-websocket).
+- **Producción (Vercel):** `NEXT_PUBLIC_COLLAB_URL` con `https://…/api/collab`. Como las funciones de Vercel no comparten WebSockets entre instancias, la sincronización va por **consultas periódicas por HTTP** (`lib/collab/http-provider.ts`, `POST /api/collab/<pagina>`): cada 5 s con actividad, 20 s / 60 s en reposo y en pausa tras 30 min. El ritmo se eligió para caber en las 4 h de CPU del plan Hobby (`docs/limites-vercel-hobby.md`). Con `NEXT_PUBLIC_COLLAB_URL=off` se usa solo el canal de avisos `/realtime`.
 - Cada página que se edita tiene además un documento **Yjs** guardado en **IndexedDB** (y-indexeddb). Si se cae la red, se sigue editando; al volver se sube con `POST /api/sync/pages/:id` (con `operationId` para no duplicar).
 - Si alguien más cambió la página, se hace una **fusión de tres vías por bloque** (`lib/editor/merge.ts`): lo que no choca se combina solo; si dos personas editaron el mismo bloque, se muestra un diálogo para elegir.
 - Si alguien restaura una versión del historial mientras otras personas editan, el servidor cierra la sala (código 4409): el editor borra su copia local y vuelve a cargar la versión restaurada. Si a alguien le quitan el acceso, se le avisa (4403).
@@ -96,6 +97,6 @@ Necesitas dos terminales y dos navegadores (o uno normal y una ventana de incóg
 
 ### Qué falta para producción
 
-- **Infraestructura:** HTTPS y WSS; configurar `BACKEND_URL`, `NEXT_PUBLIC_REALTIME_URL` y `NEXT_PUBLIC_COLLAB_URL` con las direcciones públicas; el token viaja en la URL del WebSocket (`?token=`), así que conviene que los registros del proxy no guarden la consulta. El proxy delante de Next debe agregar la IP real en `X-Forwarded-For` (el login la reenvía al backend).
+- **Infraestructura:** HTTPS; configurar `BACKEND_URL` y `NEXT_PUBLIC_COLLAB_URL` (`https://<backend>/api/collab`, edición por HTTP) y `PROXY_SECRET` (el servidor de Next firma con él la IP real del login, porque Vercel reescribe `X-Forwarded-For`). En local, la edición en vivo va por WebSocket y el token viaja en la URL (`?token=`).
 - **Backend:** una sola instancia por ahora (ver [PENDIENTES_BACKEND.md](PENDIENTES_BACKEND.md)).
 - **Datos locales:** al cerrar sesión se borra todo lo que la wiki guardó en el dispositivo (copias para trabajar sin conexión, borradores y páginas en caché). Si hay cambios sin subir, antes se listan y se pide confirmación (`components/auth/LogoutButton.tsx`). Si la sesión vence sin cerrar sesión, los datos quedan hasta el siguiente cierre; al entrar otra persona en el mismo navegador se borra la caché de páginas.

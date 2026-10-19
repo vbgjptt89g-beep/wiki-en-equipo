@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fileStorage, uploadDirectory } from "../../backend/storage/files.js";
 import { createDepartment, createPage, createUser, prisma, readFileStatus, resetDatabase, startApi, uploadImage, type TestApi, type TestUser } from "./helpers";
 
-// El contenedor de producción no conserva el disco: los archivos van a la base (FILE_STORAGE=database).
+// Las funciones de Vercel no conservan el disco: los archivos van a la base (FILE_STORAGE=database).
 let api: TestApi;
 let duena: TestUser, otra: TestUser, admin: TestUser;
 const before = process.env.FILE_STORAGE;

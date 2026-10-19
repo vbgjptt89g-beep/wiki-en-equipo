@@ -100,74 +100,64 @@ En producción, cada persona debe cambiar su contraseña al entrar por primera v
 
 ## Despliegue
 
-Todo con planes gratis y **sin tarjeta**: frontend en Vercel, backend en Back4App Containers y base de datos en Turso.
+Todo con planes gratis y **sin tarjeta**: frontend y backend en Vercel, y base de datos en Turso.
 
 ### Dónde corre cada parte
 
 - **Frontend:** Vercel, con la carpeta raíz `frontend`. Dirección: https://wiki-en-equipo.vercel.app. Cada PR genera su propia vista previa.
-- **Backend:** Back4App Containers, plan **Free**: un contenedor Docker construido con [`backend/Dockerfile`](backend/Dockerfile). Dirección: `https://<tu-backend>.b4a.run`.
+- **Backend:** Vercel, un proyecto aparte con la carpeta raíz `backend` (funciones de Vercel, `framework: express`). Dirección: `https://<tu-backend>.vercel.app`.
 - **Base de datos:** Turso, que es SQLite en la nube, también gratis. El backend usa el mismo esquema y las mismas migraciones que en local.
-- **Archivos subidos:** dentro de la base de datos (`FILE_STORAGE=database`), porque el contenedor no tiene disco permanente. Límite de 4 MB por archivo.
+- **Archivos subidos:** dentro de la base de datos (`FILE_STORAGE=database`), porque las funciones de Vercel no conservan disco. Límite de 4 MB por archivo.
 
-### Por qué Back4App
+### Por qué Vercel para el backend
 
-Se compararon en octubre de 2026 los servicios que publican un servidor Node.js gratis:
+Vercel no pide tarjeta y ya aloja el frontend, así que el backend va como un segundo proyecto del mismo repositorio. Se
+compararon en octubre de 2026 otros servicios que publican Node.js gratis y ninguno servía sin tarjeta (Koyeb la pide,
+Hugging Face cobra el Docker, SnapDeploy cobra los WebSockets, Railway da un crédito único); Back4App Containers
+también servía, pero se retiró en favor de Vercel para tener las dos partes en el mismo sitio y una sola CLI.
 
-| Servicio | Tarjeta | WebSockets | Resultado |
-|---|---|---|---|
-| **Back4App Containers** | No | Sí | Elegido. 0,25 CPU, 256 MB de RAM y 100 GB de tráfico al mes; el backend usa unos 60–90 MB |
-| Koyeb | Sí, retención de US$29 desde febrero de 2026 | — | Descartado |
-| Hugging Face Spaces | No | — | Descartado: Docker pide PRO desde julio de 2026 |
-| SnapDeploy | No | Solo pagando "Always-On" | Descartado |
-| Railway | No para la prueba | — | Descartado: crédito único de US$5, luego US$1 al mes |
+Lo que hay que tener en cuenta:
+- El plan Hobby incluye **4 horas de CPU activa** y 1 millón de invocaciones al mes. Con 10 personas editando caben,
+  pero sin mucho margen: el cálculo completo está en [`docs/limites-vercel-hobby.md`](docs/limites-vercel-hobby.md).
+- Las funciones de Vercel **no comparten memoria entre instancias**, así que la edición en vivo en producción va por
+  **consultas periódicas por HTTP** (cada 5 s con actividad) en lugar de WebSockets. En local se siguen usando WebSockets.
+- La retención de la papelera la dispara **Vercel Cron** una vez al día (`/api/cron/papelera`).
 
-Lo que hay que vigilar en Back4App, porque su documentación no lo aclara:
-- si el contenedor gratis se detiene por inactividad o por tiempo;
-- cuánto tarda en volver.
-
-Si se reinicia no se pierde nada: todo vive en Turso. La edición en vivo se reconecta sola y el frontend espera hasta 60 s a que el backend responda.
+Si algo falla no se pierde nada: todo vive en Turso. La edición en vivo se reconecta sola y el frontend espera hasta 60 s a que el backend responda.
 
 ### Cómo funciona la base en Turso
 
 - Con `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`, Prisma usa el adaptador de libSQL (`@prisma/adapter-libsql`). Sin ellas, en local y en las pruebas, usa el archivo de `DATABASE_URL` sin internet.
-- `prisma migrate deploy` no llega a Turso. Por eso, **al arrancar**, el backend aplica las migraciones de `backend/models/migrations` que falten:
+- `prisma migrate deploy` no llega a Turso. Por eso el backend aplica las migraciones de `backend/models/migrations` que falten:
+  - en Vercel, **al compilar** (`pnpm run vercel-build` llama a `models/deploy-turso.ts`), no en cada petición, para que las funciones arranquen rápido;
+  - en local, al arrancar el servidor;
   - en orden, cada una en una transacción, junto con su registro en `_prisma_migrations`;
-  - si una falla, se deshace completa y el servidor no arranca;
+  - si una falla, se deshace completa y el proceso no sigue;
   - nunca borra datos.
 - Para aplicarlas a mano: `cd backend && pnpm run db:deploy:turso`, con las dos variables definidas.
 - Para probar todo como en producción, sin internet: `cd backend && corepack pnpm run test:turso`.
 
-### La imagen del backend
-
-`backend/Dockerfile` compila el backend en una etapa y deja una imagen final con solo lo necesario:
-- Node 22;
-- corre con el usuario `node`, sin permisos de administrador;
-- las migraciones van dentro de la imagen.
-
-Ya trae los valores fijos de producción:
+### Variables de entorno del backend en Vercel
 
 | Variable | Valor |
 |---|---|
-| `PORT` | `8080` (el que expone la imagen) |
-| `FILE_STORAGE` | `database` |
+| `TURSO_DATABASE_URL` | la URL `libsql://…` de Turso |
+| `TURSO_AUTH_TOKEN` | el token de Turso (lectura y escritura, sin vencimiento) |
 | `FRONTEND_ORIGIN` | `https://wiki-en-equipo.vercel.app` |
-| `TRUST_PROXY` | `2` (el proxy del servicio y el servidor de Next en Vercel) |
+| `JWT_SECRET` | texto aleatorio de 32+ caracteres |
+| `BOOTSTRAP_SECRET` | otro texto aleatorio, distinto (solo para crear el primer administrador) |
+| `PROXY_SECRET` | el mismo valor que en el frontend: el servidor de Next firma con él la IP real del login |
+| `CRON_SECRET` | Vercel lo envía en `Authorization: Bearer` al Cron de la papelera |
+| `FILE_STORAGE` | `database` (las funciones no conservan disco) |
+| `TRUST_PROXY` | `false` (Vercel reescribe `X-Forwarded-For`; la IP real llega por `X-Wiki-Client-Ip` con `PROXY_SECRET`) |
 | `MAX_UPLOAD_BYTES` | `4194304` (4 MB) |
-| `NODE_ENV` | `production` |
+| `TRASH_RETENTION_DAYS` | `30` |
 
-Los secretos nunca van en la imagen: se pegan en el panel del servicio. `backend/.dockerignore` deja fuera `.env`, las bases locales y los archivos subidos.
-
-Para probarla en local, con Docker y una base libSQL dentro del contenedor:
+Para generar cada texto aleatorio:
 
 ```bash
-cd backend && docker build -t wiki-backend .
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
-
-```bash
-docker run --rm -p 4000:8080 -e TURSO_DATABASE_URL=file:/tmp/prueba.db -e JWT_SECRET=<32+ caracteres> -e BOOTSTRAP_SECRET=<texto> -e FRONTEND_ORIGIN=http://localhost:3000 wiki-backend
-```
-
-Después `curl http://localhost:4000/health` debe responder `{"status":"ok"}`, y con el frontend en local funcionan `npm run seed` y `npm test`.
 
 ### 1. Base de datos en Turso
 
@@ -176,40 +166,31 @@ Después `curl http://localhost:4000/health` debe responder `{"status":"ok"}`, y
 3. Abre la base y copia su **URL**, que empieza con `libsql://`.
 4. En la misma página crea un **token** (*Create Token* o *Generate Token*), con permiso de lectura y escritura y sin vencimiento. Cópialo: solo se muestra una vez.
 
-Esos dos valores van en Back4App, nunca en el repositorio. Las tablas las crea el backend la primera vez que arranca.
+Esos dos valores van en Vercel, nunca en el repositorio. Las tablas las crea el backend al desplegar (las migraciones corren en el build).
 
-### 2. Backend en Back4App Containers
+### 2. Backend en Vercel
 
-1. Entra a https://www.back4app.com/signup-containers y crea una cuenta con **GitHub**. El plan Free no pide tarjeta.
-2. Crea una app nueva de **Containers** y elige **Import GitHub Repo**. GitHub te pide instalar la app de Back4App: dale acceso solo al repositorio `vbgjptt89g-beep/wiki-en-equipo`.
-3. Configura la app:
-   - **App Name:** `wiki-en-equipo-backend`
+1. En Vercel, con el mismo repositorio `vbgjptt89g-beep/wiki-en-equipo`, pulsa **Add New → Project** e importa de nuevo el repositorio.
+2. Configura el proyecto:
+   - **Project Name:** `wiki-en-equipo-backend`
+   - **Root Directory:** `backend`
+   - **Framework Preset:** Express (lo detecta por `backend/vercel.json`)
    - **Branch:** `main`
-   - **Root** (carpeta raíz): `./backend`, donde está el Dockerfile
-   - **Auto-Deploy:** activado
-4. En **Environment Variables** agrega estas cuatro, cada una con su valor:
-   - `TURSO_DATABASE_URL`: la URL `libsql://…` de Turso
-   - `TURSO_AUTH_TOKEN`: el token de Turso
-   - `JWT_SECRET`: un texto aleatorio de 32 caracteres o más
-   - `BOOTSTRAP_SECRET`: otro texto aleatorio, distinto
-
-   Las demás ya vienen en la imagen. Para generar cada texto aleatorio:
-
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-   ```
-
-5. **Create App** o **Deploy**. En los registros (*Logs*) deben aparecer las migraciones aplicadas y `Wiki en equipo API escuchando…`.
-6. Copia la dirección de la app (`https://….b4a.run`) y abre `/health` en ella. Debe responder `{"status":"ok"}`.
+   - **Build & Output Settings:** sin cambios: usa `backend/vercel.json`.
+3. En **Settings → Environment Variables**, en **Production**, define las de la tabla de arriba.
+4. **Deploy**. En los registros del build deben aparecer las migraciones aplicadas; en los *Runtime Logs*, `Wiki en equipo API escuchando…`.
+5. Abre `/health` en la dirección del proyecto (`https://<tu-backend>.vercel.app/health`). Debe responder `{"status":"ok"}`.
 
 ### 3. Frontend en Vercel
 
 En *Settings → Environment Variables*, en **Production**, define estas variables y vuelve a desplegar:
 
-- `BACKEND_URL=https://<tu-backend>.b4a.run`
-- `NEXT_PUBLIC_REALTIME_URL=wss://<tu-backend>.b4a.run/realtime`
-- `NEXT_PUBLIC_COLLAB_URL=wss://<tu-backend>.b4a.run/collab`
+- `BACKEND_URL=https://<tu-backend>.vercel.app` (solo la usa el servidor de Next; el navegador nunca llama directo al backend)
+- `NEXT_PUBLIC_COLLAB_URL=https://<tu-backend>.vercel.app/api/collab` (edición en vivo por consultas periódicas por HTTP)
 - `NEXT_PUBLIC_MAX_UPLOAD_MB=4`: las subidas pasan por el servidor de Next, y en Vercel una función no acepta más de 4,5 MB.
+- `PROXY_SECRET`: el mismo valor que en el backend; el servidor de Next firma con él la IP real del login.
+
+`NEXT_PUBLIC_REALTIME_URL` **ya no hace falta** en producción: el canal de avisos por WebSocket `/realtime` es para local. Si `NEXT_PUBLIC_COLLAB_URL` usa `https://…`, la edición en vivo va por HTTP y no se abre ningún WebSocket.
 
 Las variables `NEXT_PUBLIC_*` quedan dentro del código del navegador, así que hay que volver a desplegar después de cambiarlas.
 
@@ -223,10 +204,12 @@ Toda la información de la wiki vive en Turso. Antes de un cambio grande, saca u
 
 **Nunca** borres ni reinicies la base de producción y **nunca** corras `npm run seed` contra ella (crea páginas de ejemplo y solo sirve con una base vacía). Primero despliega en el backend la versión que acepta contraseñas de 8 caracteres.
 
+La forma recomendada en Windows es el script [`scripts/crear-usuarios.ps1`](scripts/crear-usuarios.ps1), que crea el administrador, los departamentos y los cuatro usuarios, y avisa si alguno ya existe. También se puede hacer a mano:
+
 1. **Si la base de producción todavía no tiene usuarios**, crea el administrador una sola vez (pide `BOOTSTRAP_SECRET` a quien configuró el backend):
 
    ```bash
-   curl -X POST https://<tu-backend>.b4a.run/api/auth/bootstrap -H "Content-Type: application/json" -d '{"name":"Administrador","email":"adminwiki@grupocomidas.com","password":"12345abc","departmentName":"Tecnología","secret":"<BOOTSTRAP_SECRET>"}'
+   curl -X POST https://<tu-backend>.vercel.app/api/auth/bootstrap -H "Content-Type: application/json" -d '{"name":"Administrador","email":"adminwiki@grupocomidas.com","password":"12345abc","departmentName":"Tecnología","secret":"<BOOTSTRAP_SECRET>"}'
    ```
 
    Si responde 409, la base ya tiene usuarios: no pasa nada, sigue con el paso 2.

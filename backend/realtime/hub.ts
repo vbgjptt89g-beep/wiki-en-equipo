@@ -14,7 +14,7 @@ export class RealtimeHub {
   private readonly heartbeat: NodeJS.Timeout;
 
   /**
-   * `heartbeatMs`: cada cuánto se envía un ping. Detrás de un proxy (Back4App, Nginx...) las conexiones sin
+   * `heartbeatMs`: cada cuánto se envía un ping. Detrás de un proxy (Nginx...) las conexiones sin
    * tráfico se cortan; el ping las mantiene abiertas y cierra las que ya no responden.
    */
   constructor(heartbeatMs = 30_000) {
