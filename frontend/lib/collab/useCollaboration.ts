@@ -5,6 +5,7 @@ import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
 import { WebsocketProvider } from "y-websocket";
 import { getRealtimeToken } from "@/app/actions/session";
+import { HttpCollabProvider } from "./http-provider";
 import { connectPageChannel, type ChannelStatus } from "./realtime";
 
 export type Peer = { clientId: number; name: string; color: string };
@@ -17,8 +18,10 @@ export const colorFor = (seed: string) => {
 };
 
 /**
- * Dirección del servidor Yjs del backend (`/collab`, protocolo y-websocket).
- * - `NEXT_PUBLIC_COLLAB_URL`: dirección pública (por ejemplo `wss://wiki.ejemplo.com/collab`).
+ * Dirección de la edición en vivo del backend.
+ * - `NEXT_PUBLIC_COLLAB_URL` con `ws(s)://…/collab`: servidor Yjs por WebSocket (protocolo y-websocket).
+ * - `NEXT_PUBLIC_COLLAB_URL` con `http(s)://…/api/collab`: consultas periódicas por HTTP (producción en Vercel,
+ *   ver http-provider.ts).
  * - `NEXT_PUBLIC_COLLAB_URL=off`: sin edición en vivo; se usa el canal de avisos `/realtime`.
  * - Sin definir: la misma máquina que `NEXT_PUBLIC_REALTIME_URL` o el puerto 4000 de este host.
  */
@@ -33,7 +36,23 @@ export function collabUrl(): string {
   return `${secure ? "wss" : "ws"}://${host}:4000/collab`;
 }
 
-/** Códigos con los que el backend cierra la conexión en vivo. */
+/** Lo que este hook usa del proveedor: WebsocketProvider (local) o HttpCollabProvider (Vercel). */
+type LiveProvider = {
+  awareness: HttpCollabProvider["awareness"];
+  wsconnected: boolean;
+  on(event: "status", listener: (event: { status: string }) => void): void;
+  on(event: "sync", listener: (synced: boolean) => void): void;
+  on(event: "connection-error", listener: () => void): void;
+  on(event: "closed", listener: (event: { code: number }) => void): void;
+  connect(): void;
+  disconnect(): void;
+  destroy(): void;
+};
+
+/** La edición en vivo va por HTTP (consultas periódicas) en lugar de WebSocket. */
+export const isHttpCollab = (url: string) => /^https?:///.test(url);
+
+/** Códigos con los que el backend cierra la conexión en vivo (por HTTP, los mismos para 409 y 403). */
 const ACCESS_REVOKED = 4403;
 const CONTENT_REPLACED = 4409;
 /** Intentos seguidos sin poder conectar antes de esperar un minuto (servidor caído o sin acceso). */
@@ -60,7 +79,7 @@ export function useCollaboration({ pageId, user, onRemoteSave, enabled = true }:
   const [remoteSynced, setRemoteSynced] = useState(!url);
   const [status, setStatus] = useState<ChannelStatus>("connecting");
   const [peers, setPeers] = useState<Peer[]>([]);
-  const [provider, setProvider] = useState<WebsocketProvider | null>(null);
+  const [provider, setProvider] = useState<LiveProvider | null>(null);
   /** El contenido se reemplazó en el servidor: no hay que guardar nada más desde este editor. */
   const [replaced, setReplaced] = useState(false);
   const [accessLost, setAccessLost] = useState(false);
@@ -83,13 +102,15 @@ export function useCollaboration({ pageId, user, onRemoteSave, enabled = true }:
   useEffect(() => {
     if (!enabled) return;
     if (url) {
-      let ws: WebsocketProvider | null = null;
+      let ws: LiveProvider | null = null;
       let cancelled = false;
       let failures = 0;
       let retry: ReturnType<typeof setTimeout> | null = null;
       void getRealtimeToken().then((token) => {
         if (cancelled) return;
-        ws = new WebsocketProvider(url, `pagina-${pageId}`, doc, { params: token ? { token } : {} });
+        ws = isHttpCollab(url)
+          ? new HttpCollabProvider(url, pageId, doc, { token, getToken: getRealtimeToken }) as LiveProvider
+          : new WebsocketProvider(url, `pagina-${pageId}`, doc, { params: token ? { token } : {} }) as unknown as LiveProvider;
         ws.awareness.setLocalStateField("user", { name: user.name, color });
         ws.on("status", ({ status: s }: { status: string }) => {
           if (s === "connected") failures = 0;
